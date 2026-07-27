@@ -1,10 +1,11 @@
 //! Application entry point: start a session through the [`Backend`]
-//! seam, hold the [`Snapshot`] in a signal, and render the table scene
-//! from it.
+//! seam, feed every [`Transition`] to the [`Motion`] choreographer, and
+//! render the table scene from the display snapshot it advances.
 //!
 //! [`Backend`]: blackjack_ui::backend::Backend
 
-use blackjack_core::Snapshot;
+use blackjack_core::Transition;
+use blackjack_ui::motion::{Motion, MotionOverlay};
 use blackjack_ui::scene::TableScene;
 use leptos::prelude::*;
 
@@ -19,8 +20,12 @@ fn main() {
 /// plain browser — so the scene still renders for development. The real
 /// app always goes through the backend seam; nothing outside this
 /// fallback ever touches [`blackjack_core::Table`] from the frontend.
-fn dev_fallback_snapshot() -> Snapshot {
-    blackjack_core::Table::from_seed(blackjack_core::Rules::canonical(), 0).snapshot()
+fn dev_fallback_transition() -> Transition {
+    Transition {
+        snapshot: blackjack_core::Table::from_seed(blackjack_core::Rules::canonical(), 0)
+            .snapshot(),
+        events: Vec::new(),
+    }
 }
 
 /// Whether the Tauri IPC global (`window.__TAURI__`) is present.
@@ -33,19 +38,20 @@ fn tauri_available() -> bool {
     .unwrap_or(false)
 }
 
-/// Populate `snapshot` with the opening state: `start_session` over the
-/// backend seam, or the dev-only fallback outside a Tauri shell.
+/// Open the session and hand its opening transition to the
+/// choreographer: `start_session` over the backend seam, or the
+/// dev-only fallback outside a Tauri shell.
 #[cfg(target_arch = "wasm32")]
-fn open_session(snapshot: RwSignal<Option<Snapshot>>) {
+fn open_session(motion: Motion) {
     use blackjack_ui::backend::{Backend, TauriBackend};
 
     if !tauri_available() {
-        snapshot.set(Some(dev_fallback_snapshot()));
+        motion.play(dev_fallback_transition());
         return;
     }
     leptos::task::spawn_local(async move {
         match TauriBackend::new().start_session().await {
-            Ok(transition) => snapshot.set(Some(transition.snapshot)),
+            Ok(transition) => motion.play(transition),
             Err(error) => leptos::logging::error!("start_session failed: {error}"),
         }
     });
@@ -54,19 +60,24 @@ fn open_session(snapshot: RwSignal<Option<Snapshot>>) {
 /// Host builds have no Tauri shell and never actually serve the UI;
 /// keep the scene renderable for host-side tooling and tests.
 #[cfg(not(target_arch = "wasm32"))]
-fn open_session(snapshot: RwSignal<Option<Snapshot>>) {
-    snapshot.set(Some(dev_fallback_snapshot()));
+fn open_session(motion: Motion) {
+    motion.play(dev_fallback_transition());
 }
 
 #[component]
 fn App() -> impl IntoView {
-    let snapshot = RwSignal::new(Option::<Snapshot>::None);
-    open_session(snapshot);
+    // The one seam this file owns: transitions go through the
+    // choreographer (`motion.play(transition)`), which advances the
+    // display snapshot event-by-event; the scene renders that signal.
+    let motion = Motion::new();
+    open_session(motion.clone());
+    let display = motion.display_signal();
     view! {
-        <main style="margin:0;padding:0;width:100vw;height:100vh;overflow:hidden;background:#0b0910;">
+        <main style="position:relative;margin:0;padding:0;width:100vw;height:100vh;overflow:hidden;background:#0b0910;">
             {move || {
-                snapshot.get().map(|snapshot| view! { <TableScene snapshot=snapshot /> })
+                display.get().map(|snapshot| view! { <TableScene snapshot=snapshot /> })
             }}
+            <MotionOverlay motion=motion.clone() />
         </main>
     }
 }

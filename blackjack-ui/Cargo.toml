@@ -21,3 +21,22 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 serde-wasm-bindgen = "0.6"
+# Motion (#10): requestAnimationFrame and the WebAudio synth.
+web-sys = { version = "0.3", features = [
+    "Window",
+    "EventTarget",
+    "AudioContext",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "BiquadFilterNode",
+    "BiquadFilterType",
+    "GainNode",
+] }
+
+[dev-dependencies]
+# Seeded engine rounds for the motion property tests.
+rand_chacha = { workspace = true }

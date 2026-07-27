@@ -7,4 +7,5 @@
 //! never call the backend.
 
 pub mod backend;
+pub mod motion;
 pub mod scene;
