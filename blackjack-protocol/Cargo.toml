@@ -1,0 +1,14 @@
+[package]
+name = "blackjack-protocol"
+description = "The frontend/backend seam for Casino Blackjack: the Backend trait and wire types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+blackjack-core = { path = "../blackjack-core" }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

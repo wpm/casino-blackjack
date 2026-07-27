@@ -1,0 +1,5 @@
+# getrandom 0.3 (pulled in through rand) has no default entropy source on
+# wasm32-unknown-unknown; select its JavaScript backend for wasm builds.
+# The matching "wasm_js" cargo feature is enabled in blackjack-ui.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
