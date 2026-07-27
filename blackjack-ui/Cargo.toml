@@ -1,0 +1,12 @@
+[package]
+name = "blackjack-ui"
+description = "Leptos frontend for Casino Blackjack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+blackjack-core = { path = "../blackjack-core" }
+leptos = { version = "0.8", features = ["csr"] }
+console_error_panic_hook = "0.1"

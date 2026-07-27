@@ -1,0 +1,4 @@
+/target
+blackjack-ui/dist
+src-tauri/gen/schemas
+.DS_Store
