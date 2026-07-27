@@ -353,6 +353,14 @@ impl<R: RngCore> TableLife<R> {
         self.human_sitting_out = true;
     }
 
+    /// Clear a sit-out without placing a bet: betting waits on the human
+    /// seat again from the next opportunity. The session layer uses this
+    /// to seat the human after running warm-up rounds around an empty
+    /// seat. (A successful bet clears the flag too.)
+    pub fn human_sit_in(&mut self) {
+        self.human_sitting_out = false;
+    }
+
     /// Whether the human seat is currently sitting out.
     pub fn human_sitting_out(&self) -> bool {
         self.human_sitting_out
@@ -828,6 +836,23 @@ mod tests {
         assert_eq!(l.snapshot().phase, Phase::Betting);
         l.human_apply(Action::PlaceBet(25)).unwrap();
         assert!(!l.human_sitting_out());
+    }
+
+    #[test]
+    fn sitting_back_in_waits_on_the_human_again() {
+        let mut l = life(82);
+        run_rounds(&mut l, 3);
+        assert!(l.human_sitting_out());
+        l.human_sit_in();
+        assert!(!l.human_sitting_out());
+        // Driving on now rests on the human's bet.
+        let mut beats = 0u32;
+        while l.awaiting() == Awaiting::Engine {
+            beats += 1;
+            assert!(beats < 1_000, "betting never waited on the human");
+            l.advance();
+        }
+        assert_eq!(l.awaiting(), Awaiting::HumanBet);
     }
 
     #[test]

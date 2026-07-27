@@ -9,6 +9,10 @@ repository.workspace = true
 [dependencies]
 blackjack-core = { path = "../blackjack-core" }
 serde = { workspace = true }
+# The shared session arc (SessionArc) seeds and drives TableLife<ChaCha8Rng>
+# and randomizes the buy-in; all entropy is injected by the caller.
+rand = { workspace = true }
+rand_chacha = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

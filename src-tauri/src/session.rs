@@ -3,52 +3,47 @@
 //!
 //! The `#[tauri::command]` fns in `lib.rs` are one-line wrappers over the
 //! free functions here, so tests can drive the exact command code path
-//! without a running Tauri app. All engine access goes through
-//! [`Table::apply`]; this layer adds only session lifecycle
-//! ([`BackendError::NoSession`]) and locking.
+//! without a running Tauri app. The session state machine itself is
+//! [`SessionArc`] (shared with the browser dev fallback via
+//! `blackjack-protocol`); this layer adds only session lifecycle
+//! ([`BackendError::NoSession`]), OS-random seeding, and locking.
+//! Nothing is ever persisted: a session lives and dies with the process.
 
 use std::sync::{Mutex, MutexGuard};
 
-use blackjack_core::{Action, Rules, Table, Transition};
-use blackjack_protocol::BackendError;
+use blackjack_core::{Action, ChipStack};
+use blackjack_protocol::{BackendError, SessionArc, SessionView};
 use rand::RngCore;
-use rand_chacha::ChaCha8Rng;
-
-/// One live game: a table under canonical rules on a seeded shoe.
-///
-/// Later issues swap what backs a session (AI-run seats, the full session
-/// arc) without changing the command surface, which stays
-/// snapshot/transition-shaped.
-pub struct GameSession {
-    table: Table<ChaCha8Rng>,
-}
-
-impl GameSession {
-    /// Open a canonical-rules table whose shoe is seeded from `seed`.
-    pub fn new(seed: u64) -> GameSession {
-        GameSession {
-            table: Table::from_seed(Rules::canonical(), seed),
-        }
-    }
-}
 
 /// The Tauri-managed authoritative game state: at most one session.
 #[derive(Default)]
-pub struct SessionState(Mutex<Option<GameSession>>);
+pub struct SessionState(Mutex<Option<SessionArc>>);
 
-fn lock(state: &SessionState) -> MutexGuard<'_, Option<GameSession>> {
-    // A poisoned mutex means a command panicked mid-apply; the table is
-    // still structurally valid (apply mutates only after validating), so
-    // recover the guard rather than wedging the app.
+fn lock(state: &SessionState) -> MutexGuard<'_, Option<SessionArc>> {
+    // A poisoned mutex means a command panicked mid-call; the session is
+    // still structurally valid (the engine mutates only after
+    // validating), so recover the guard rather than wedging the app.
     state
         .0
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Run `f` against the live session, or [`BackendError::NoSession`].
+fn with_session<T>(
+    state: &SessionState,
+    f: impl FnOnce(&mut SessionArc) -> Result<T, BackendError>,
+) -> Result<T, BackendError> {
+    let mut guard = lock(state);
+    let session = guard.as_mut().ok_or(BackendError::NoSession)?;
+    f(session)
+}
+
 /// Start a fresh session with an OS-random seed, replacing any existing
-/// one, and return its opening state (betting phase, events empty).
-pub fn start_session(state: &SessionState) -> Result<Transition, BackendError> {
+/// one: randomized buy-in, table already warm from AI-only rounds. The
+/// returned view's events are empty — the player arrives at a table that
+/// simply is.
+pub fn start_session(state: &SessionState) -> Result<SessionView, BackendError> {
     start_session_with_seed(state, rand::rng().next_u64())
 }
 
@@ -58,36 +53,43 @@ pub fn start_session(state: &SessionState) -> Result<Transition, BackendError> {
 pub fn start_session_with_seed(
     state: &SessionState,
     seed: u64,
-) -> Result<Transition, BackendError> {
-    let session = GameSession::new(seed);
-    let snapshot = session.table.snapshot();
+) -> Result<SessionView, BackendError> {
+    let session = SessionArc::from_seed(seed);
+    let view = session.view();
     *lock(state) = Some(session);
-    Ok(Transition {
-        snapshot,
-        events: Vec::new(),
-    })
+    Ok(view)
+}
+
+/// [`start_session_with_seed`] with the buy-in and warm-up length pinned
+/// as well — for tests that need a poor player or a known table depth.
+pub fn start_session_with_buy_in(
+    state: &SessionState,
+    seed: u64,
+    chips: ChipStack,
+    warmup_rounds: u32,
+) -> Result<SessionView, BackendError> {
+    let session = SessionArc::with_buy_in(seed, chips, warmup_rounds);
+    let view = session.view();
+    *lock(state) = Some(session);
+    Ok(view)
 }
 
 /// The current state, changing nothing (events empty).
-pub fn snapshot(state: &SessionState) -> Result<Transition, BackendError> {
-    let guard = lock(state);
-    let session = guard.as_ref().ok_or(BackendError::NoSession)?;
-    Ok(Transition {
-        snapshot: session.table.snapshot(),
-        events: Vec::new(),
-    })
+pub fn view(state: &SessionState) -> Result<SessionView, BackendError> {
+    with_session(state, |session| Ok(session.view()))
 }
 
-/// Submit one action for one seat, exactly as [`Table::apply`].
-pub fn submit_action(
-    state: &SessionState,
-    seat: usize,
-    action: Action,
-) -> Result<Transition, BackendError> {
-    let mut guard = lock(state);
-    let session = guard.as_mut().ok_or(BackendError::NoSession)?;
-    session
-        .table
-        .apply(seat, action)
-        .map_err(BackendError::Rejected)
+/// One engine beat ([`blackjack_core::TableLife::advance`]).
+pub fn advance(state: &SessionState) -> Result<SessionView, BackendError> {
+    with_session(state, |session| Ok(session.advance()))
+}
+
+/// Submit one action for the human seat, legality re-gated server-side.
+pub fn human_action(state: &SessionState, action: Action) -> Result<SessionView, BackendError> {
+    with_session(state, |session| session.human_action(action))
+}
+
+/// Leave the table (between rounds only): color up, cash out.
+pub fn walk_away(state: &SessionState) -> Result<SessionView, BackendError> {
+    with_session(state, |session| session.walk_away())
 }

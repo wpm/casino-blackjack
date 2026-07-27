@@ -1,5 +1,5 @@
 //! Casino Blackjack native shell: Tauri app setup and the IPC command
-//! layer over the engine.
+//! layer over the session arc.
 //!
 //! The commands are deliberately thin — one line each over the plain
 //! functions in [`session`] — so the integration tests exercise the same
@@ -7,27 +7,36 @@
 
 pub mod session;
 
-use blackjack_core::{Action, Transition};
-use blackjack_protocol::BackendError;
+use blackjack_core::Action;
+use blackjack_protocol::{BackendError, SessionView};
 use session::SessionState;
 
 #[tauri::command]
-fn start_session(state: tauri::State<'_, SessionState>) -> Result<Transition, BackendError> {
+fn start_session(state: tauri::State<'_, SessionState>) -> Result<SessionView, BackendError> {
     session::start_session(&state)
 }
 
 #[tauri::command]
-fn snapshot(state: tauri::State<'_, SessionState>) -> Result<Transition, BackendError> {
-    session::snapshot(&state)
+fn view(state: tauri::State<'_, SessionState>) -> Result<SessionView, BackendError> {
+    session::view(&state)
 }
 
 #[tauri::command]
-fn submit_action(
+fn advance(state: tauri::State<'_, SessionState>) -> Result<SessionView, BackendError> {
+    session::advance(&state)
+}
+
+#[tauri::command]
+fn human_action(
     state: tauri::State<'_, SessionState>,
-    seat: usize,
     action: Action,
-) -> Result<Transition, BackendError> {
-    session::submit_action(&state, seat, action)
+) -> Result<SessionView, BackendError> {
+    session::human_action(&state, action)
+}
+
+#[tauri::command]
+fn walk_away(state: tauri::State<'_, SessionState>) -> Result<SessionView, BackendError> {
+    session::walk_away(&state)
 }
 
 /// Build and run the Tauri application.
@@ -36,9 +45,11 @@ pub fn run() {
         .manage(SessionState::default())
         .invoke_handler(tauri::generate_handler![
             start_session,
-            snapshot,
-            submit_action
+            view,
+            advance,
+            human_action,
+            walk_away
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Casino Blackjack");
+        .expect("error while running Casino Blackjack")
 }
