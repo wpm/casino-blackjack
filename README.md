@@ -6,6 +6,13 @@ multi-deck mechanics (insurance, splits, double down, late surrender, 3:2
 blackjack) — honest enough to practice card counting against. Chips are the
 only scoreboard; house rules appear only on the table placard.
 
+## Installing
+
+Download the installer for your platform from the
+[latest release](https://github.com/wpm/casino-blackjack/releases/latest) —
+`.dmg` for macOS (Apple Silicon), `.msi` for Windows, `.AppImage` or `.deb`
+for Linux — double-click it, and play. No configuration required.
+
 ## Building
 
 Prerequisites: [Rust](https://rustup.rs), [Trunk](https://trunkrs.dev)
