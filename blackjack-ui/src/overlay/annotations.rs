@@ -11,6 +11,13 @@
 //! deterministic chalk-lettering tilt, and knows whether it should be
 //! dimmed — an annotation for a gesture that is meaningless right now
 //! dims but never vanishes, so the vocabulary always reads as a whole.
+//!
+//! The lettering itself sits at a separate [`HelpNote::label`] point,
+//! laddered into open felt around the crowded center seat; when a label
+//! is far from its zone, the renderer draws a dashed chalk leader from
+//! the lettering back to the [`HelpNote::anchor`]. Keeping the two
+//! points separate is what lets every zone stay truthfully outlined
+//! while the words spread out far enough to stay legible.
 
 use blackjack_core::{ActionKind, Phase, Rules, Soft17};
 
@@ -51,8 +58,12 @@ pub struct HelpNote {
     pub title: &'static str,
     /// The one-line explanation under the headline.
     pub detail: &'static str,
-    /// Where the lettering sits.
+    /// The point inside the felt zone this note describes — the leader
+    /// line's target, always within the zone's own bounds.
     pub anchor: HelpAnchor,
+    /// Where the lettering sits: open felt near the zone, chosen so no
+    /// two labels collide. Same coordinate frame as `anchor`.
+    pub label: HelpAnchor,
     /// Whether the described action is meaningless right now.
     pub dimmed: bool,
     /// Hand-lettering rotation jitter, degrees.
@@ -99,12 +110,17 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
         && ctx.human_active
         && ctx.allows(ActionKind::TakeInsurance);
     let between_rounds = matches!(ctx.phase, Phase::Betting | Phase::RoundOver);
-    let raw: [(&str, &str, &str, HelpAnchor, bool); 9] = [
+    // (id, title, detail, zone anchor, lettering label, dimmed). Labels
+    // ladder into open felt: hit/double/split up the right side,
+    // stand/surrender/rack-leave up the left, bet and insurance on the
+    // center line above the circle, keys along the bottom rail.
+    let raw: [(&str, &str, &str, HelpAnchor, HelpAnchor, bool); 9] = [
         (
             "bet-circle",
             "BETTING CIRCLE",
-            "Drag chips from your rack into the circle; tap it (or press Enter) to post the bet.",
+            "Drag chips from your rack into the circle; let them rest and the deal begins.",
             HelpAnchor::Seat { x: 0.0, y: 0.0 },
+            HelpAnchor::Seat { x: 0.0, y: -115.0 },
             !betting_open,
         ),
         (
@@ -114,6 +130,10 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
             HelpAnchor::Seat {
                 x: 0.0,
                 y: HAND_ZONE_Y_FAR + 60.0,
+            },
+            HelpAnchor::Seat {
+                x: 330.0,
+                y: -335.0,
             },
             !hand_live(ctx, ActionKind::Hit),
         ),
@@ -125,6 +145,10 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
                 x: 0.0,
                 y: HAND_ZONE_Y_NEAR - 60.0,
             },
+            HelpAnchor::Seat {
+                x: -350.0,
+                y: -180.0,
+            },
             !hand_live(ctx, ActionKind::Stand),
         ),
         (
@@ -135,6 +159,7 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
                 x: DOUBLE_ZONE_X,
                 y: 0.0,
             },
+            HelpAnchor::Seat { x: 345.0, y: -30.0 },
             !hand_live(ctx, ActionKind::Double),
         ),
         (
@@ -145,6 +170,7 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
                 x: 0.0,
                 y: SPLIT_ZONE_Y,
             },
+            HelpAnchor::Seat { x: 345.0, y: 95.0 },
             !hand_live(ctx, ActionKind::Split),
         ),
         (
@@ -155,12 +181,20 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
                 x: -96.0,
                 y: (BEHIND_ZONE_Y_MIN + BEHIND_ZONE_Y_MAX) / 2.0,
             },
+            HelpAnchor::Seat {
+                x: -345.0,
+                y: -30.0,
+            },
             !hand_live(ctx, ActionKind::Surrender),
         ),
         (
             "insurance",
             "THE INSURANCE LINE",
             "A side bet that the dealer has blackjack \u{2014} drop chips on the line to take it.",
+            HelpAnchor::Global {
+                x: ARC_CX,
+                y: ARC_CY + INSURANCE_R_OUTER,
+            },
             HelpAnchor::Global {
                 x: ARC_CX,
                 y: ARC_CY + INSURANCE_R_OUTER,
@@ -175,6 +209,7 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
                 x: RACK_X,
                 y: RACK_REGION_TOP + 22.0,
             },
+            HelpAnchor::Global { x: 455.0, y: 885.0 },
             !between_rounds,
         ),
         (
@@ -185,16 +220,21 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
                 x: RACK_X,
                 y: RACK_REGION_TOP - 46.0,
             },
+            HelpAnchor::Global {
+                x: RACK_X,
+                y: 950.0,
+            },
             false,
         ),
     ];
     raw.into_iter()
         .enumerate()
-        .map(|(i, (id, title, detail, anchor, dimmed))| HelpNote {
+        .map(|(i, (id, title, detail, anchor, label, dimmed))| HelpNote {
             id,
             title,
             detail,
             anchor,
+            label,
             dimmed,
             tilt: label_tilt(i),
         })
@@ -249,6 +289,36 @@ mod tests {
         in_insurance_band, in_rack_region,
     };
     use crate::input::gesture::test_ctx;
+    use crate::scene::geometry::SeatPlace;
+
+    /// A note's label point in global scene coordinates.
+    fn label_point(note: &HelpNote, place: SeatPlace) -> Point {
+        match note.label {
+            HelpAnchor::Seat { x, y } => {
+                let rad = place.tilt.to_radians();
+                Point::new(
+                    place.x + x * rad.cos() - y * rad.sin(),
+                    place.y + x * rad.sin() + y * rad.cos(),
+                )
+            }
+            HelpAnchor::Global { x, y } => Point::new(x, y),
+        }
+    }
+
+    /// Conservative bounding box for a note's chalk lettering: centered
+    /// title (17px, wide letter-spacing) over centered detail (12.5px).
+    fn label_box(note: &HelpNote, place: SeatPlace) -> LabelBox {
+        let p = label_point(note, place);
+        let width = (note.title.len() as f64 * 13.2).max(note.detail.len() as f64 * 6.6);
+        (p.x - width / 2.0, p.y - 16.0, p.x + width / 2.0, p.y + 32.0)
+    }
+
+    /// A lettering bounding box: (left, top, right, bottom).
+    type LabelBox = (f64, f64, f64, f64);
+
+    fn boxes_overlap(a: LabelBox, b: LabelBox) -> bool {
+        a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
+    }
 
     fn seat_anchor(note: &HelpNote) -> Point {
         match note.anchor {
@@ -323,6 +393,43 @@ mod tests {
         let keys = global_anchor(note(&notes, "keys"));
         assert!((keys.x - RACK_X).abs() <= RACK_HALF_W);
         assert!((RACK_REGION_TOP - 80.0..RACK_REGION_TOP).contains(&keys.y));
+    }
+
+    #[test]
+    fn labels_never_collide_on_the_canonical_table() {
+        // Betting lights the densest note set, and the canonical
+        // seven-seat table puts the human dead center where crowding is
+        // worst — this is the layout that regressed once before.
+        let ctx = test_ctx(Phase::Betting, &[ActionKind::PlaceBet], false);
+        let notes = help_notes(&ctx);
+        let boxes: Vec<(&str, LabelBox)> = notes
+            .iter()
+            .map(|n| (n.id, label_box(n, ctx.place)))
+            .collect();
+        // The placard explainer block's own footprint (left-aligned
+        // lines up to ~110 chars at 12.5px, plus its headline above).
+        let placard = (
+            PLACARD_NOTES_X - 10.0,
+            PLACARD_NOTES_Y - 45.0,
+            PLACARD_NOTES_X + 730.0,
+            PLACARD_NOTES_Y + 3.0 * PLACARD_NOTES_LEADING + 10.0,
+        );
+        for (i, (id_a, a)) in boxes.iter().enumerate() {
+            assert!(
+                a.0 >= 8.0 && a.2 <= 1592.0 && a.1 >= 30.0 && a.3 <= 998.0,
+                "{id_a} lettering leaves the glass: {a:?}"
+            );
+            assert!(
+                !boxes_overlap(*a, placard),
+                "{id_a} collides with the placard explainer: {a:?}"
+            );
+            for (id_b, b) in boxes.iter().skip(i + 1) {
+                assert!(
+                    !boxes_overlap(*a, *b),
+                    "{id_a} collides with {id_b}: {a:?} vs {b:?}"
+                );
+            }
+        }
     }
 
     #[test]

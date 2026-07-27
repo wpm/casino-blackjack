@@ -32,6 +32,11 @@ use crate::scene::geometry::{
 };
 use crate::scene::{ChipStackView, ChipView, RackView};
 
+/// How long staged chips must rest in the circle before the bet posts
+/// on its own — long enough to stack more chips unhurried, short
+/// enough that the deal feels like the dealer's doing.
+const SETTLE_POST_MS: u64 = 1500;
+
 /// A drag in progress, in scene coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct DragState {
@@ -127,6 +132,38 @@ pub fn InputLayer(
         }
     });
 
+    // The dealer takes a settled bet: once staged chips have rested in
+    // the circle for a beat — no drag in flight, nothing added or
+    // removed since — the bet posts on its own, exactly as the deal
+    // begins when chips stop moving at a real table. Tapping the
+    // circle or pressing Enter still hurries it. Each staging change
+    // arms a fresh timer; the generation counter retires stale ones.
+    let settle_generation = StoredValue::new(0u64);
+    let settle_post = move || {
+        let generation = settle_generation.with_value(|g| g + 1);
+        settle_generation.set_value(generation);
+        set_timeout(
+            move || {
+                if settle_generation.get_value() != generation || drag.get_untracked().is_some() {
+                    return;
+                }
+                let staged_total = staged.get_untracked().total();
+                let Some(ctx) = current_ctx(snapshot) else {
+                    return;
+                };
+                if ctx.settle_ready(staged_total) {
+                    on_intent.run(Intent::ConfirmBet(staged_total));
+                }
+            },
+            std::time::Duration::from_millis(SETTLE_POST_MS),
+        );
+    };
+    // Picking anything up retires any pending settle without arming a
+    // new one — chips in hand are chips still moving.
+    let settle_cancel = move || {
+        settle_generation.update_value(|g| *g += 1);
+    };
+
     let on_pointer_down = move |ev: leptos::web_sys::PointerEvent| {
         let Some((element, p)) = event_scene_point(&ev) else {
             return;
@@ -134,6 +171,7 @@ pub fn InputLayer(
         let Some(ctx) = current_ctx(snapshot) else {
             return;
         };
+        settle_cancel();
         let grab = grab_at(
             &ctx,
             &visible_rack.get_untracked(),
@@ -180,9 +218,11 @@ pub fn InputLayer(
             StrokeOutcome::StageAdd(denomination) => {
                 let rack = rack.get_untracked();
                 staged.update(|stack| *stack = stage_add(stack, denomination, ctx.max_bet, &rack));
+                settle_post();
             }
             StrokeOutcome::StageRemove(denomination) => {
                 staged.update(|stack| *stack = stage_remove(stack, denomination));
+                settle_post();
             }
             StrokeOutcome::Intent(intent) => on_intent.run(intent),
             StrokeOutcome::Nothing => {}
@@ -209,6 +249,7 @@ pub fn InputLayer(
                 staged.update(|stack| {
                     *stack = stage_nudge(stack, up, ctx.min_bet, ctx.max_bet, &rack)
                 });
+                settle_post();
             }
             KeyCommand::BetUnits(units) if betting_open => {
                 staged.set(stage_units(
@@ -217,6 +258,7 @@ pub fn InputLayer(
                     ctx.max_bet,
                     &rack.get_untracked(),
                 ));
+                settle_post();
             }
             KeyCommand::BetUp | KeyCommand::BetDown | KeyCommand::BetUnits(_) => {}
             other => {

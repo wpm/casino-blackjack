@@ -162,6 +162,14 @@ impl GestureCtx {
     fn between_rounds(&self) -> bool {
         matches!(self.phase, Phase::Betting | Phase::RoundOver)
     }
+
+    /// Whether a staged bet resting in the circle should post on its
+    /// own: betting open and the stage at least the table minimum. The
+    /// dealer starts the deal once the chips stop moving — waiting for
+    /// an extra "go" signal is a web idiom, not a casino one.
+    pub fn settle_ready(&self, staged_total: u32) -> bool {
+        self.betting_open() && staged_total >= self.min_bet
+    }
 }
 
 /// What (if anything) the pointer picks up when it goes down at `p`.
@@ -636,6 +644,21 @@ mod tests {
             grab_at(&ctx, &rack, &staged, Point::new(400.0, 500.0)),
             None
         );
+    }
+
+    #[test]
+    fn settled_stages_post_only_when_betting_is_open_and_at_the_minimum() {
+        let betting = test_ctx(Phase::Betting, &[ActionKind::PlaceBet], false);
+        assert!(betting.settle_ready(betting.min_bet));
+        assert!(betting.settle_ready(betting.min_bet + 5));
+        // Short stacks rest in the circle unposted.
+        assert!(!betting.settle_ready(betting.min_bet - 5));
+        assert!(!betting.settle_ready(0));
+        // Outside an open betting window nothing ever auto-posts.
+        let playing = test_ctx(Phase::PlayerTurn, &[ActionKind::Hit], true);
+        assert!(!playing.settle_ready(50));
+        let closed = test_ctx(Phase::Betting, &[], false);
+        assert!(!closed.settle_ready(50));
     }
 
     #[test]
