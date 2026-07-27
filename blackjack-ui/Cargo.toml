@@ -12,6 +12,10 @@ blackjack-protocol = { path = "../blackjack-protocol" }
 leptos = { version = "0.8", features = ["csr"] }
 console_error_panic_hook = "0.1"
 serde = { workspace = true }
+# The dev-only in-process fallback table in main.rs names Table<ChaCha8Rng>.
+rand_chacha = { workspace = true }
+# DOM types the input overlay reads beyond what leptos itself enables.
+web-sys = { version = "0.3", features = ["DomRect", "Element", "EventTarget", "PointerEvent"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Backend selection for the getrandom in blackjack-core's rand dependency;
