@@ -12,6 +12,10 @@ mod shoe;
 mod snapshot;
 mod table;
 
+mod life;
+mod persona;
+mod strategy;
+
 pub use action::{Action, ActionError, ActionKind};
 pub use card::{Card, Rank, Suit};
 pub use event::{Event, HandOutcome};
@@ -23,6 +27,9 @@ pub use snapshot::{
     ShoeStatus, Snapshot,
 };
 pub use table::{Table, Transition};
+
+pub use life::{Awaiting, Pace, Step, TableLife};
+pub use strategy::basic_strategy;
 
 /// Engine version, exposed so shells can report what they embed.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");

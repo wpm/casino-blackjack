@@ -165,6 +165,18 @@ pub enum Event {
     /// The shoe's cut card has been passed; the next round starts from a
     /// fresh shuffle.
     CutCardReached,
+    /// A new player sat down at an empty seat between rounds.
+    PlayerArrived {
+        /// The newly occupied seat.
+        seat: usize,
+    },
+    /// A player left the table between rounds.
+    PlayerDeparted {
+        /// The newly vacated seat.
+        seat: usize,
+    },
+    /// A new dealer took over the table (and with them, a new pace).
+    DealerChanged,
 }
 
 #[cfg(test)]
@@ -192,6 +204,9 @@ mod tests {
                 outcome: HandOutcome::Blackjack,
                 amount: 15,
             },
+            Event::PlayerArrived { seat: 5 },
+            Event::PlayerDeparted { seat: 5 },
+            Event::DealerChanged,
         ];
         for event in events {
             let json = serde_json::to_string(&event).unwrap();
