@@ -24,6 +24,7 @@ use std::cell::RefCell;
 use blackjack_core::{Action, ActionKind, Rules, Snapshot, Table, Transition};
 use blackjack_ui::input::{GestureCtx, InputLayer, Intent, human_seat, resolve};
 use blackjack_ui::motion::{Motion, MotionOverlay};
+use blackjack_ui::overlay::HelpOverlay;
 use blackjack_ui::scene::TableScene;
 use leptos::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -250,6 +251,9 @@ fn App() -> impl IntoView {
             }}
             <MotionOverlay motion=motion.clone() />
             <InputLayer snapshot=authoritative on_intent=on_intent />
+            // The help glass: hold `?` or F1. Mounted last so it sits
+            // above the gesture layer; pointer-events pass through it.
+            <HelpOverlay snapshot=authoritative />
         </main>
     }
 }

@@ -8,9 +8,12 @@
 //! mirror — lives in [`input`], which emits legality-gated intents and
 //! likewise never calls the backend itself. Event-driven animation and
 //! sound live in [`motion`], which choreographs transitions onto a
-//! display snapshot without ever inventing game facts.
+//! display snapshot without ever inventing game facts. Annotations
+//! suspended above the table — the frosted-glass help layer and
+//! whatever reuses its idiom — live in [`overlay`].
 
 pub mod backend;
 pub mod input;
 pub mod motion;
+pub mod overlay;
 pub mod scene;
