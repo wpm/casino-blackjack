@@ -24,6 +24,10 @@ pub use snapshot::{
 };
 pub use table::{Table, Transition};
 
+mod chips;
+
+pub use chips::{ChipColor, ChipError, ChipStack, Denomination, Rack, payout_chips};
+
 /// Engine version, exposed so shells can report what they embed.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
