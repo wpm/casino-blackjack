@@ -6,16 +6,23 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Make the in-process engine THE backend — no Tauri probing, no Tauri
+# glue compiled in. This is the web build (GitHub Pages):
+#   trunk build --release --features in-process
+# Without it, the app probes for the Tauri IPC global at runtime and
+# falls back to the same in-process engine (the `trunk serve` dev loop).
+in-process = []
+
 [dependencies]
 blackjack-core = { path = "../blackjack-core" }
 blackjack-protocol = { path = "../blackjack-protocol" }
 leptos = { version = "0.8", features = ["csr"] }
 console_error_panic_hook = "0.1"
 serde = { workspace = true }
-# The dev-only in-process fallback session in main.rs seeds itself from
-# OS randomness (getrandom's wasm_js backend on wasm; see .cargo/config.toml).
+# The in-process backend seeds its session from OS randomness
+# (getrandom's wasm_js backend on wasm; see .cargo/config.toml).
 rand = { workspace = true }
-rand_chacha = { workspace = true }
 # DOM types the input overlay reads beyond what leptos itself enables.
 web-sys = { version = "0.3", features = ["DomRect", "Element", "EventTarget", "PointerEvent"] }
 
