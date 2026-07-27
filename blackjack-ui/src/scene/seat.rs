@@ -8,15 +8,16 @@ use super::chips::ChipStackView;
 use super::geometry::{BET_CIRCLE_R, CARD_H, CARD_W, FAN_DX, FAN_DY, SeatPlace, bust_jitter};
 
 /// Vertical offset from the betting-circle center to the top of a
-/// hand's first card.
-const HAND_Y: f64 = -245.0;
+/// hand's first card. Public so motion (#10) can land cards exactly
+/// where this view rests them.
+pub const HAND_Y: f64 = -245.0;
 /// Horizontal spacing between split hands.
-const SPLIT_DX: f64 = 112.0;
+pub const SPLIT_DX: f64 = 112.0;
 /// Where a split hand's bet pile sits, between circle and cards.
-const SPLIT_BET_Y: f64 = -95.0;
+pub const SPLIT_BET_Y: f64 = -95.0;
 /// Where insurance chips sit: on the seat's radial line, inside the
 /// insurance band.
-const INSURANCE_Y: f64 = -282.0;
+pub const INSURANCE_Y: f64 = -282.0;
 
 /// Whether a settled hand's bet has been swept by the dealer.
 fn bet_swept(hand: &HandSnapshot) -> bool {
