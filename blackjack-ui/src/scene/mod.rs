@@ -29,5 +29,5 @@ pub use card::{CardBack, CardFace};
 pub use chips::{ChipPile, ChipStackView, ChipView, RackView};
 pub use dealer::{DealerTray, DealerView, DiscardTrayView, ShoeView};
 pub use placard::Placard;
-pub use seat::{HandView, SeatView};
+pub use seat::{HAND_Y, HandView, INSURANCE_Y, SPLIT_BET_Y, SPLIT_DX, SeatView};
 pub use table::TableScene;
