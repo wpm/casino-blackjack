@@ -10,6 +10,7 @@
     "frontendDist": "../blackjack-ui/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
