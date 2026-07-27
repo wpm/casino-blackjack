@@ -110,25 +110,58 @@ fn ChalkZones(place: SeatPlace) -> impl IntoView {
     }
 }
 
-/// One chalk annotation: headline, dashed underline, one-line detail,
-/// tilted by its deterministic jitter and dimmed when its gesture is
-/// meaningless right now.
+/// How far lettering may drift from its zone before the leader line
+/// appears to tie the two back together.
+const LEADER_MIN_DISTANCE: f64 = 130.0;
+
+/// One chalk annotation: headline, dashed underline, one-line detail —
+/// lettered at the note's label point, tied back to its felt zone by a
+/// dashed leader when the two are far apart — tilted by its
+/// deterministic jitter and dimmed when its gesture is meaningless
+/// right now.
 #[component]
 fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
-    let (frame, x, y) = match note.anchor {
-        HelpAnchor::Seat { x, y } => (
-            format!(
-                "translate({:.2} {:.2}) rotate({:.2})",
-                place.x, place.y, place.tilt
-            ),
-            x,
-            y,
-        ),
+    let seat_frame = format!(
+        "translate({:.2} {:.2}) rotate({:.2})",
+        place.x, place.y, place.tilt
+    );
+    let (frame, x, y) = match note.label {
+        HelpAnchor::Seat { x, y } => (seat_frame.clone(), x, y),
         HelpAnchor::Global { x, y } => (String::new(), x, y),
     };
+    // The leader runs label→zone inside the label's own frame; a note's
+    // anchor and label always share a frame by construction.
+    let (ax, ay) = match note.anchor {
+        HelpAnchor::Seat { x, y } | HelpAnchor::Global { x, y } => (x, y),
+    };
+    let (dx, dy) = (ax - x, ay - y);
+    let distance = dx.hypot(dy);
+    let leader = (distance > LEADER_MIN_DISTANCE).then(|| {
+        // Start clear of the lettering: step out along the leader's
+        // direction from the underline's midpoint, and stop a chip
+        // short of the zone point so the chalk never touches the felt
+        // marking it names.
+        let (ux, uy) = (dx / distance, dy / distance);
+        let (sx, sy) = (ux * 92.0, 16.0 + uy * 24.0);
+        let (ex, ey) = (dx - ux * 26.0, dy - uy * 26.0);
+        view! {
+            <line
+                x1=format!("{sx:.2}")
+                y1=format!("{sy:.2}")
+                x2=format!("{ex:.2}")
+                y2=format!("{ey:.2}")
+                stroke=CHALK_INK
+                stroke-width="1.2"
+                stroke-dasharray="2 8"
+                stroke-linecap="round"
+                opacity="0.5"
+            ></line>
+        }
+    });
     view! {
         <g transform=frame opacity=if note.dimmed { 0.3 } else { 0.95 }>
             <g transform=format!("translate({x:.2} {y:.2}) rotate({:.2})", note.tilt)>
+                {leader}
                 <text
                     text-anchor="middle"
                     font-family=CHALK_FONT
