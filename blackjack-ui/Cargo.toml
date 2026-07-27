@@ -12,7 +12,9 @@ blackjack-protocol = { path = "../blackjack-protocol" }
 leptos = { version = "0.8", features = ["csr"] }
 console_error_panic_hook = "0.1"
 serde = { workspace = true }
-# The dev-only in-process fallback table in main.rs names Table<ChaCha8Rng>.
+# The dev-only in-process fallback session in main.rs seeds itself from
+# OS randomness (getrandom's wasm_js backend on wasm; see .cargo/config.toml).
+rand = { workspace = true }
 rand_chacha = { workspace = true }
 # DOM types the input overlay reads beyond what leptos itself enables.
 web-sys = { version = "0.3", features = ["DomRect", "Element", "EventTarget", "PointerEvent"] }

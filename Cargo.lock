@@ -215,6 +215,8 @@ name = "blackjack-protocol"
 version = "0.1.0"
 dependencies = [
  "blackjack-core",
+ "rand",
+ "rand_chacha",
  "serde",
  "serde_json",
 ]
@@ -229,6 +231,7 @@ dependencies = [
  "getrandom 0.3.4",
  "js-sys",
  "leptos",
+ "rand",
  "rand_chacha",
  "serde",
  "serde-wasm-bindgen",

@@ -22,13 +22,13 @@
 //!
 //! # The seam
 //!
-//! [`Motion`] is the whole surface: `main.rs` calls [`Motion::play`]
-//! instead of writing the snapshot signal directly, and renders from
-//! [`Motion::display_signal`]. When the session layer (#12) drives
-//! [`TableLife`](blackjack_core::TableLife), it feeds each engine
-//! step's real pace through [`Motion::play_paced`] (or
-//! [`Motion::set_pace`]); until then the pace signal defaults to
-//! [`Motion::DEFAULT_PACE`], the Measured dealer's numbers.
+//! [`Motion`] is the whole surface: `main.rs` calls [`Motion::play_paced`]
+//! instead of writing the snapshot signal directly — the session layer
+//! drives [`TableLife`](blackjack_core::TableLife) and feeds each engine
+//! step's real pace alongside its transition — and renders from
+//! [`Motion::display_signal`]. Before the first view arrives the pace
+//! signal defaults to [`Motion::DEFAULT_PACE`], the Measured dealer's
+//! numbers.
 
 pub mod display;
 pub mod overlay;
@@ -68,7 +68,7 @@ impl Default for Motion {
 }
 
 impl Motion {
-    /// The pace assumed until #12 wires the real dealer through:
+    /// The pace assumed until the first session view arrives:
     /// the Measured persona's numbers from `blackjack_core::life`.
     pub const DEFAULT_PACE: Pace = Pace {
         card_ms: 400,
@@ -107,8 +107,8 @@ impl Motion {
         self.overlay
     }
 
-    /// Set the pace used to plan transitions from now on. The #12 seam:
-    /// feed `Step.pace` here whenever the engine reports one.
+    /// Set the pace used to plan transitions from now on; the session
+    /// layer feeds every view's pace through [`Motion::play_paced`].
     pub fn set_pace(&self, pace: Pace) {
         self.pace.set(pace);
     }

@@ -9,11 +9,12 @@
 //! out through the `on_intent` callback — the overlay never talks to a
 //! backend and never constructs an engine [`Action`](blackjack_core::Action).
 //!
-//! Until #12 wires the real bankroll, the rack is a fixed placeholder
-//! display: staged chips are cut from thin air and the rack's piles
-//! never deplete.
+//! The rack is the session's real bankroll (the `rack` signal, fed from
+//! every [`SessionView`](blackjack_protocol::SessionView)): staging is
+//! limited to chips actually in it, and the rendered piles deplete as
+//! chips are staged ([`rack_after_staging`]).
 
-use blackjack_core::{ActionKind, ChipStack, Denomination, Phase, Snapshot};
+use blackjack_core::{ActionKind, ChipStack, Phase, Snapshot};
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
 
@@ -25,7 +26,7 @@ use super::gesture::{
     GestureCtx, Grab, Intent, StrokeOutcome, classify_stroke, grab_at, human_seat,
 };
 use super::keyboard::{KeyCommand, command_intent, key_command};
-use super::staging::{stage_add, stage_nudge, stage_remove, stage_units};
+use super::staging::{rack_after_staging, stage_add, stage_nudge, stage_remove, stage_units};
 use crate::scene::geometry::{
     INSURANCE_R_INNER, INSURANCE_R_OUTER, SeatPlace, VIEW_H, VIEW_W, arc_path,
 };
@@ -40,16 +41,6 @@ struct DragState {
     start: Point,
     /// Where the pointer is now.
     pos: Point,
-}
-
-/// The placeholder rack shown until #12 wires the real bankroll:
-/// $840 in three tidy piles (6 black, 8 green, 8 red).
-fn placeholder_bankroll() -> ChipStack {
-    let mut stack = ChipStack::new();
-    stack.add_chips(Denomination::Five, 8);
-    stack.add_chips(Denomination::TwentyFive, 8);
-    stack.add_chips(Denomination::Hundred, 6);
-    stack
 }
 
 /// The scene-coordinate position of a pointer event over the overlay,
@@ -110,12 +101,16 @@ fn ZoneHint(place: SeatPlace, cx: f64, cy: f64) -> impl IntoView {
 pub fn InputLayer(
     /// The app's snapshot signal (read-only here).
     snapshot: RwSignal<Option<Snapshot>>,
+    /// The human's real rack from the session view (read-only here).
+    rack: RwSignal<ChipStack>,
     /// Where recognized intents go.
     on_intent: UnsyncCallback<Intent>,
 ) -> impl IntoView {
     let staged = RwSignal::new(ChipStack::new());
     let drag = RwSignal::new(Option::<DragState>::None);
-    let bankroll = RwSignal::new(placeholder_bankroll());
+    // What the rail shows and offers for grabbing: the rack minus the
+    // chips already staged in the circle.
+    let visible_rack = Memo::new(move |_| rack_after_staging(&rack.get(), &staged.get()));
 
     // The stage lives only while betting is open and unposted: once the
     // human's bet is on the felt (or the phase moves on), clear it.
@@ -139,7 +134,12 @@ pub fn InputLayer(
         let Some(ctx) = current_ctx(snapshot) else {
             return;
         };
-        let grab = grab_at(&ctx, &bankroll.get_untracked(), &staged.get_untracked(), p);
+        let grab = grab_at(
+            &ctx,
+            &visible_rack.get_untracked(),
+            &staged.get_untracked(),
+            p,
+        );
         let _ = element.set_pointer_capture(ev.pointer_id());
         drag.set(Some(DragState {
             grab,
@@ -178,7 +178,8 @@ pub fn InputLayer(
         };
         match classify_stroke(&ctx, state.grab, stroke, staged.get_untracked().total()) {
             StrokeOutcome::StageAdd(denomination) => {
-                staged.update(|stack| *stack = stage_add(stack, denomination, ctx.max_bet));
+                let rack = rack.get_untracked();
+                staged.update(|stack| *stack = stage_add(stack, denomination, ctx.max_bet, &rack));
             }
             StrokeOutcome::StageRemove(denomination) => {
                 staged.update(|stack| *stack = stage_remove(stack, denomination));
@@ -204,10 +205,18 @@ pub fn InputLayer(
         match command {
             KeyCommand::BetUp | KeyCommand::BetDown if betting_open => {
                 let up = command == KeyCommand::BetUp;
-                staged.update(|stack| *stack = stage_nudge(stack, up, ctx.min_bet, ctx.max_bet));
+                let rack = rack.get_untracked();
+                staged.update(|stack| {
+                    *stack = stage_nudge(stack, up, ctx.min_bet, ctx.max_bet, &rack)
+                });
             }
             KeyCommand::BetUnits(units) if betting_open => {
-                staged.set(stage_units(units, ctx.min_bet, ctx.max_bet));
+                staged.set(stage_units(
+                    units,
+                    ctx.min_bet,
+                    ctx.max_bet,
+                    &rack.get_untracked(),
+                ));
             }
             KeyCommand::BetUp | KeyCommand::BetDown | KeyCommand::BetUnits(_) => {}
             other => {
@@ -219,11 +228,11 @@ pub fn InputLayer(
     });
     on_cleanup(move || key_handle.remove());
 
-    // The human's rack on the bottom rail.
-    let rack = move || {
+    // The human's rack on the bottom rail: real chips, minus the stage.
+    let rack_rail = move || {
         view! {
             <g transform=format!("translate({RACK_X} {RACK_Y})")>
-                <RackView stack=bankroll.get() cap=RACK_CAP />
+                <RackView stack=visible_rack.get() cap=RACK_CAP />
             </g>
         }
     };
@@ -320,7 +329,7 @@ pub fn InputLayer(
             on:pointerup=on_pointer_up
             on:pointercancel=on_pointer_cancel
         >
-            {rack}
+            {rack_rail}
             {staged_pile}
             {hints}
             {ghost}

@@ -35,8 +35,10 @@ use super::geometry::{
 use super::staging::stage_ready;
 use crate::scene::geometry::{SeatPlace, seat_places};
 
-/// The seat the UI treats as the human's: the center seat. Issue #12
-/// replaces this with the session's configured seat.
+/// The seat the UI treats as the human's: the center seat — the same
+/// convention the session arc uses server-side
+/// ([`SessionArc`](blackjack_protocol::SessionArc) seats the human at
+/// `rules.seats / 2`), so both sides agree without a wire field.
 pub fn human_seat(snapshot: &Snapshot) -> usize {
     snapshot.seats.len() / 2
 }

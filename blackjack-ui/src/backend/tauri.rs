@@ -5,10 +5,11 @@
 //! `window.__TAURI__.core.invoke` (available because the app sets
 //! `app.withGlobalTauri: true` in `tauri.conf.json`). Arguments and
 //! results cross the boundary through `serde_wasm_bindgen`, so both sides
-//! speak exactly blackjack-core's serde types.
+//! speak exactly the shared serde types from `blackjack-core` and
+//! `blackjack-protocol`.
 
-use blackjack_core::{Action, Transition};
-use blackjack_protocol::{Backend, BackendError, SubmitActionArgs};
+use blackjack_core::Action;
+use blackjack_protocol::{Backend, BackendError, HumanActionArgs, SessionView};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
@@ -46,7 +47,7 @@ fn to_args(args: &impl Serialize) -> Result<JsValue, BackendError> {
 }
 
 /// [`Backend`] over Tauri IPC: the native shell holds the authoritative
-/// table and this struct is a stateless client for it.
+/// session and this struct is a stateless client for it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TauriBackend;
 
@@ -58,19 +59,23 @@ impl TauriBackend {
 }
 
 impl Backend for TauriBackend {
-    async fn start_session(&self) -> Result<Transition, BackendError> {
+    async fn start_session(&self) -> Result<SessionView, BackendError> {
         invoke("start_session", JsValue::UNDEFINED).await
     }
 
-    async fn snapshot(&self) -> Result<Transition, BackendError> {
-        invoke("snapshot", JsValue::UNDEFINED).await
+    async fn view(&self) -> Result<SessionView, BackendError> {
+        invoke("view", JsValue::UNDEFINED).await
     }
 
-    async fn submit_action(&self, seat: usize, action: Action) -> Result<Transition, BackendError> {
-        invoke(
-            "submit_action",
-            to_args(&SubmitActionArgs { seat, action })?,
-        )
-        .await
+    async fn advance(&self) -> Result<SessionView, BackendError> {
+        invoke("advance", JsValue::UNDEFINED).await
+    }
+
+    async fn human_action(&self, action: Action) -> Result<SessionView, BackendError> {
+        invoke("human_action", to_args(&HumanActionArgs { action })?).await
+    }
+
+    async fn walk_away(&self) -> Result<SessionView, BackendError> {
+        invoke("walk_away", JsValue::UNDEFINED).await
     }
 }
