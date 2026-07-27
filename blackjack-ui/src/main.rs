@@ -37,6 +37,7 @@ use blackjack_core::{Action, Awaiting, ChipStack, Snapshot};
 use blackjack_protocol::{BackendError, SessionArc, SessionStatus, SessionView};
 use blackjack_ui::input::{GestureCtx, InputLayer, Intent, human_seat, resolve};
 use blackjack_ui::motion::{Motion, MotionOverlay};
+use blackjack_ui::overlay::HelpOverlay;
 use blackjack_ui::scene::TableScene;
 use leptos::either::EitherOf3;
 use leptos::prelude::*;
@@ -393,6 +394,10 @@ fn App() -> impl IntoView {
                     EitherOf3::A(
                         view! {
                             <InputLayer snapshot=session.authoritative rack=session.rack on_intent=on_intent />
+                            // The help glass: hold `?` or F1. Mounted last
+                            // so it sits above the gesture layer;
+                            // pointer-events pass through it.
+                            <HelpOverlay snapshot=session.authoritative />
                         },
                     )
                 }
