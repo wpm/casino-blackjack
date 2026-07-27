@@ -1,0 +1,10 @@
+[package]
+name = "blackjack-core"
+description = "Pure, fully parameterized casino blackjack rules engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
