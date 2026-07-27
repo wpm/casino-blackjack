@@ -24,17 +24,19 @@
 //! view restarts the pump. [`Intent::WalkAway`] goes to `walk_away`
 //! instead — valid only between rounds, enforced server-side.
 //!
+//! Which backend answers is [`ActiveBackend`]'s business, not this
+//! module's: the Tauri shell over IPC, or the in-process engine (the
+//! web build, and the dev fallback outside a Tauri shell). Every path
+//! below is the same async code over the [`Backend`] trait.
+//!
 //! When the status leaves `Playing`, the table is replaced by one of two
 //! quiet full-screen states: cash-out (the one dollar figure in the game
 //! outside the placard) or game over. Neither offers a restart:
 //! relaunching the app is the only way to a new universe.
-//!
-//! [`Backend`]: blackjack_ui::backend::Backend
-
-use std::cell::RefCell;
 
 use blackjack_core::{Action, Awaiting, ChipStack, Snapshot};
-use blackjack_protocol::{BackendError, SessionArc, SessionStatus, SessionView};
+use blackjack_protocol::{BackendError, SessionStatus, SessionView};
+use blackjack_ui::backend::{ActiveBackend, Backend};
 use blackjack_ui::input::{GestureCtx, InputLayer, Intent, human_seat, resolve};
 use blackjack_ui::motion::{Motion, MotionOverlay};
 use blackjack_ui::overlay::HelpOverlay;
@@ -91,89 +93,20 @@ fn engine_pending(session: Session) -> bool {
         && session.status.get_untracked() == SessionStatus::Playing
 }
 
-thread_local! {
-    /// DEV-ONLY fallback session (see [`dev_start`]).
-    static DEV_SESSION: RefCell<Option<SessionArc>> = const { RefCell::new(None) };
-}
-
-/// DEV-ONLY fallback: the same [`SessionArc`] the Tauri shell runs,
-/// built in-process from OS randomness.
-///
-/// Used when the Tauri IPC global is absent — i.e. `trunk serve` in a
-/// plain browser — so the full session arc (buy-in, table life, walk
-/// away, game over) is playable during development. The real app always
-/// goes through the backend seam; nothing outside this fallback ever
-/// touches the engine from the frontend.
-fn dev_start() -> SessionView {
-    use rand::RngCore;
-    DEV_SESSION.with(|cell| {
-        cell.borrow_mut()
-            .get_or_insert_with(|| SessionArc::from_seed(rand::rng().next_u64()))
-            .view()
-    })
-}
-
-/// DEV-ONLY: run `f` against the local session, if one is open.
-fn dev_session<T>(f: impl FnOnce(&mut SessionArc) -> T) -> Option<T> {
-    DEV_SESSION.with(|cell| cell.borrow_mut().as_mut().map(f))
-}
-
-/// Whether the Tauri IPC global (`window.__TAURI__`) is present.
-#[cfg(target_arch = "wasm32")]
-fn tauri_available() -> bool {
-    js_sys::Reflect::has(
-        &js_sys::global(),
-        &wasm_bindgen::JsValue::from_str("__TAURI__"),
-    )
-    .unwrap_or(false)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn tauri_available() -> bool {
-    false
-}
-
 /// While the engine has work and the session lives, keep calling
 /// `advance` — one beat per call — delivering every returned view to the
 /// choreographer. Stops on a `Human*` awaiting or a terminal status.
+/// At most one pump loop is in flight at a time.
 fn pump(session: Session, motion: Motion) {
-    if !engine_pending(session) {
-        return;
-    }
-    if tauri_available() {
-        pump_backend(session, motion);
-        return;
-    }
-    // The dev session is local and synchronous; each advance is cheap
-    // and the loop provably rests at every human decision.
-    let mut guard = 0u32;
-    while engine_pending(session) {
-        guard += 1;
-        if guard > 100_000 {
-            leptos::logging::error!("dev pump stopped making progress");
-            return;
-        }
-        let Some(view) = dev_session(|s| s.advance()) else {
-            return;
-        };
-        deliver(session, &motion, view);
-    }
-}
-
-/// The async pump against the Tauri backend, at most one in flight.
-#[cfg(target_arch = "wasm32")]
-fn pump_backend(session: Session, motion: Motion) {
-    use blackjack_ui::backend::{Backend, TauriBackend};
-
     thread_local! {
         /// Reentrancy guard: at most one pump loop in flight.
         static PUMPING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
-    if PUMPING.with(|flag| flag.replace(true)) {
+    if !engine_pending(session) || PUMPING.with(|flag| flag.replace(true)) {
         return;
     }
     leptos::task::spawn_local(async move {
-        let backend = TauriBackend::new();
+        let backend = ActiveBackend::select();
         while engine_pending(session) {
             match backend.advance().await {
                 Ok(view) => deliver(session, &motion, view),
@@ -187,29 +120,12 @@ fn pump_backend(session: Session, motion: Motion) {
     });
 }
 
-/// Host builds never have a Tauri shell; the dev loop covers them.
-#[cfg(not(target_arch = "wasm32"))]
-fn pump_backend(_session: Session, _motion: Motion) {}
-
-/// Open the session: `start_session` over the backend seam, or the
-/// dev-only fallback outside a Tauri shell. Either way the pump takes
-/// over — the player arrives mid-life and the table simply carries on.
+/// Open the session: `start_session` over the backend seam, then the
+/// pump takes over — the player arrives mid-life and the table simply
+/// carries on.
 fn open_session(session: Session, motion: Motion) {
-    if !tauri_available() {
-        deliver(session, &motion, dev_start());
-        pump(session, motion);
-        return;
-    }
-    open_backend(session, motion);
-}
-
-/// Open the session against the Tauri backend.
-#[cfg(target_arch = "wasm32")]
-fn open_backend(session: Session, motion: Motion) {
-    use blackjack_ui::backend::{Backend, TauriBackend};
-
     leptos::task::spawn_local(async move {
-        match TauriBackend::new().start_session().await {
+        match ActiveBackend::select().start_session().await {
             Ok(view) => {
                 deliver(session, &motion, view);
                 pump(session, motion);
@@ -218,10 +134,6 @@ fn open_backend(session: Session, motion: Motion) {
         }
     });
 }
-
-/// Host builds never have a Tauri shell; [`dev_start`] covers them.
-#[cfg(not(target_arch = "wasm32"))]
-fn open_backend(_session: Session, _motion: Motion) {}
 
 /// How to report a backend rejection: anything the input layer's two
 /// legality gates should have caught is an input-layer bug; chip
@@ -240,29 +152,8 @@ fn log_rejection(context: &str, error: &BackendError) {
 /// Submit one action for the human seat over the backend seam, then let
 /// the pump play out whatever the action set in motion.
 fn submit(session: Session, motion: Motion, action: Action) {
-    if !tauri_available() {
-        let Some(result) = dev_session(|s| s.human_action(action)) else {
-            return;
-        };
-        match result {
-            Ok(view) => {
-                deliver(session, &motion, view);
-                pump(session, motion);
-            }
-            Err(error) => log_rejection(&format!("{action:?}"), &error),
-        }
-        return;
-    }
-    submit_backend(session, motion, action);
-}
-
-/// Submit the human's action against the Tauri backend.
-#[cfg(target_arch = "wasm32")]
-fn submit_backend(session: Session, motion: Motion, action: Action) {
-    use blackjack_ui::backend::{Backend, TauriBackend};
-
     leptos::task::spawn_local(async move {
-        match TauriBackend::new().human_action(action).await {
+        match ActiveBackend::select().human_action(action).await {
             Ok(view) => {
                 deliver(session, &motion, view);
                 pump(session, motion);
@@ -271,44 +162,18 @@ fn submit_backend(session: Session, motion: Motion, action: Action) {
         }
     });
 }
-
-/// Host builds never have a Tauri shell; the dev session covers them.
-#[cfg(not(target_arch = "wasm32"))]
-fn submit_backend(_session: Session, _motion: Motion, _action: Action) {}
 
 /// Leave the table: `walk_away` over the seam. The server allows it only
 /// between rounds with no chips on the felt; a refusal (say, a posted
 /// bet the round is about to play) is logged quietly and play goes on.
 fn walk_away(session: Session, motion: Motion) {
-    if !tauri_available() {
-        let Some(result) = dev_session(|s| s.walk_away()) else {
-            return;
-        };
-        match result {
-            Ok(view) => deliver(session, &motion, view),
-            Err(error) => log_rejection("walk-away", &error),
-        }
-        return;
-    }
-    walk_away_backend(session, motion);
-}
-
-/// Walk away against the Tauri backend.
-#[cfg(target_arch = "wasm32")]
-fn walk_away_backend(session: Session, motion: Motion) {
-    use blackjack_ui::backend::{Backend, TauriBackend};
-
     leptos::task::spawn_local(async move {
-        match TauriBackend::new().walk_away().await {
+        match ActiveBackend::select().walk_away().await {
             Ok(view) => deliver(session, &motion, view),
             Err(error) => log_rejection("walk-away", &error),
         }
     });
 }
-
-/// Host builds never have a Tauri shell; the dev session covers them.
-#[cfg(not(target_arch = "wasm32"))]
-fn walk_away_backend(_session: Session, _motion: Motion) {}
 
 /// Map an [`Intent`] from the input layer to its backend call.
 /// [`Intent::WalkAway`] goes to the session's walk-away; everything else

@@ -13,6 +13,11 @@ Download the installer for your platform from the
 `.dmg` for macOS (Apple Silicon), `.msi` for Windows, `.AppImage` or `.deb`
 for Linux — double-click it, and play. No configuration required.
 
+## Playing in the browser
+
+The same game runs entirely in the browser — no install at all — at
+<https://wpm.github.io/casino-blackjack/>.
+
 ## Building
 
 Prerequisites: [Rust](https://rustup.rs), [Trunk](https://trunkrs.dev)
@@ -26,6 +31,14 @@ cargo tauri build    # release build
 cargo test           # run the workspace test suite
 ```
 
-The workspace has three crates: `blackjack-core` (pure rules engine),
-`blackjack-ui` (Leptos frontend, built with Trunk), and `src-tauri`
-(native shell).
+The browser build (what GitHub Pages serves) compiles the engine into
+the wasm module itself, selected by the `in-process` cargo feature:
+
+```sh
+cd blackjack-ui
+trunk build --release --features in-process
+```
+
+The workspace has four crates: `blackjack-core` (pure rules engine),
+`blackjack-protocol` (the backend seam and session arc), `blackjack-ui`
+(Leptos frontend, built with Trunk), and `src-tauri` (native shell).
