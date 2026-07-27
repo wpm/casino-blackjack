@@ -5,28 +5,31 @@
 
 mod action;
 mod card;
+mod chips;
 mod event;
 mod hand;
+mod life;
+mod persona;
 mod rules;
 mod shoe;
 mod snapshot;
+mod strategy;
 mod table;
 
 pub use action::{Action, ActionError, ActionKind};
 pub use card::{Card, Rank, Suit};
+pub use chips::{ChipColor, ChipError, ChipStack, Denomination, Rack, payout_chips};
 pub use event::{Event, HandOutcome};
 pub use hand::{HandValue, is_ace_pair, is_blackjack, is_rank_pair, is_value_pair};
+pub use life::{Awaiting, Pace, Step, TableLife};
 pub use rules::{BlackjackPayout, Rules, Soft17};
 pub use shoe::{DECK_SIZE, Shoe};
 pub use snapshot::{
     ActiveHand, DealerSnapshot, HandSnapshot, HandStatus, Insurance, Phase, SeatSnapshot,
     ShoeStatus, Snapshot,
 };
+pub use strategy::basic_strategy;
 pub use table::{Table, Transition};
-
-mod chips;
-
-pub use chips::{ChipColor, ChipError, ChipStack, Denomination, Rack, payout_chips};
 
 /// Engine version, exposed so shells can report what they embed.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
