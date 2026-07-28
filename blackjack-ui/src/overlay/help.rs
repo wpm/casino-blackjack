@@ -14,10 +14,8 @@
 //!
 //! Pure render from `(snapshot, active)`: the annotation set and its
 //! dimming come from [`super::annotations`] (host-tested), and this
-//! module only letters them onto the glass — chalk-white hand-set
-//! lines, dashed strokes, a cursive-leaning system font stack, and the
-//! deterministic tilt jitter from
-//! [`label_tilt`](super::annotations::label_tilt). Annotations for
+//! module only letters them onto the glass — chalk-white lines, dashed
+//! strokes, a cursive-leaning system font stack. Annotations for
 //! gestures that are meaningless in the current phase dim but never
 //! vanish.
 
@@ -25,8 +23,8 @@ use blackjack_core::Snapshot;
 use leptos::prelude::*;
 
 use super::annotations::{
-    HelpAnchor, HelpNote, PLACARD_NOTES_LEADING, PLACARD_NOTES_X, PLACARD_NOTES_Y, help_notes,
-    placard_notes,
+    CHIP_LEGEND_X, CHIP_LEGEND_Y, HelpAnchor, HelpNote, PLACARD_NOTES_LEADING, PLACARD_NOTES_X,
+    PLACARD_NOTES_Y, chip_legend, help_notes, placard_notes,
 };
 use super::layer::OverlayLayer;
 use crate::input::geometry::{
@@ -34,6 +32,7 @@ use crate::input::geometry::{
     HAND_ZONE_Y_NEAR, RACK_HALF_W, RACK_REGION_TOP, RACK_X, SIDE_ZONE_R, SPLIT_ZONE_Y,
 };
 use crate::input::gesture::{GestureCtx, human_seat};
+use crate::scene::ChipView;
 use crate::scene::geometry::{INSURANCE_R_INNER, INSURANCE_R_OUTER, SeatPlace, arc_path};
 
 /// Chalk-leaning system font stack — no external fonts, ever.
@@ -112,12 +111,12 @@ fn ChalkZones(place: SeatPlace) -> impl IntoView {
 
 /// How far lettering may drift from its zone before the leader line
 /// appears to tie the two back together.
-const LEADER_MIN_DISTANCE: f64 = 220.0;
+const LEADER_MIN_DISTANCE: f64 = 170.0;
 
-/// One chalk annotation: headline, dashed underline, one or two detail
-/// lines — lettered at the note's label point, tied back to its felt
-/// zone by a dashed leader when the two are far apart — dimmed when
-/// its gesture is meaningless right now.
+/// One chalk annotation: headline, dashed underline, detail lines —
+/// lettered at the note's label point, tied back to its felt zone by a
+/// dashed leader when the two are far apart — dimmed when its gesture
+/// is meaningless right now.
 #[component]
 fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
     let seat_frame = format!(
@@ -141,8 +140,8 @@ fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
         // the zone point so the chalk never touches the felt marking
         // it names.
         let (ux, uy) = (dx / distance, dy / distance);
-        let (sx, sy) = (ux * 250.0, 34.0 + uy * 52.0);
-        let (ex, ey) = (dx - ux * 40.0, dy - uy * 40.0);
+        let (sx, sy) = (ux * 190.0, 26.0 + uy * 40.0);
+        let (ex, ey) = (dx - ux * 32.0, dy - uy * 32.0);
         view! {
             <line
                 x1=format!("{sx:.2}")
@@ -150,25 +149,11 @@ fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
                 x2=format!("{ex:.2}")
                 y2=format!("{ey:.2}")
                 stroke=CHALK_INK
-                stroke-width="1.6"
-                stroke-dasharray="3 10"
+                stroke-width="1.4"
+                stroke-dasharray="2 8"
                 stroke-linecap="round"
                 opacity="0.5"
             ></line>
-        }
-    });
-    let detail2 = note.detail2.map(|line| {
-        view! {
-            <text
-                y="150"
-                text-anchor="middle"
-                font-family=CHALK_FONT
-                font-size="38"
-                fill=CHALK_INK
-                opacity="0.9"
-            >
-                {line}
-            </text>
         }
     });
     view! {
@@ -178,34 +163,77 @@ fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
                 <text
                     text-anchor="middle"
                     font-family=CHALK_FONT
-                    font-size="44"
-                    letter-spacing="4"
+                    font-size="34"
+                    letter-spacing="3"
                     fill=CHALK_INK
                 >
                     {note.title}
                 </text>
                 <line
-                    x1="-150"
-                    y1="16"
-                    x2="150"
-                    y2="16"
+                    x1="-115"
+                    y1="12"
+                    x2="115"
+                    y2="12"
                     stroke=CHALK_INK
-                    stroke-width="2"
-                    stroke-dasharray="8 6"
+                    stroke-width="1.6"
+                    stroke-dasharray="7 5"
                     opacity="0.55"
                 ></line>
-                <text
-                    y="66"
-                    text-anchor="middle"
-                    font-family=CHALK_FONT
-                    font-size="38"
-                    fill=CHALK_INK
-                    opacity="0.9"
-                >
-                    {note.detail}
-                </text>
-                {detail2}
+                {note
+                    .details
+                    .iter()
+                    .enumerate()
+                    .map(|(i, line)| {
+                        view! {
+                            <text
+                                y=48.0 + (i as f64) * 40.0
+                                text-anchor="middle"
+                                font-family=CHALK_FONT
+                                font-size="25"
+                                fill=CHALK_INK
+                                opacity="0.9"
+                            >
+                                {*line}
+                            </text>
+                        }
+                    })
+                    .collect_view()}
             </g>
+        </g>
+    }
+}
+
+/// The chip legend: one of each denomination with its dollar value
+/// chalked beneath, laid out under the dealer tray where the real
+/// chips are racked.
+#[component]
+fn ChipLegend() -> impl IntoView {
+    let entries = chip_legend();
+    let count = entries.len();
+    view! {
+        <g transform=format!("translate({CHIP_LEGEND_X:.2} {CHIP_LEGEND_Y:.2})") opacity="0.95">
+            {entries
+                .into_iter()
+                .enumerate()
+                .map(|(i, (denomination, label))| {
+                    let x = ((i as f64) - ((count - 1) as f64) / 2.0) * 80.0;
+                    view! {
+                        <g transform=format!("translate({x:.2} 0)")>
+                            <ChipView denomination=denomination top=true />
+                            <text
+                                y="52"
+                                text-anchor="middle"
+                                font-family=CHALK_FONT
+                                font-size="25"
+                                fill=CHALK_INK
+                                opacity="0.9"
+                            >
+                                {label}
+                            </text>
+                        </g>
+                    }
+                })
+                .collect_view()}
         </g>
     }
 }
@@ -217,22 +245,22 @@ fn PlacardChalk(lines: [String; 4]) -> impl IntoView {
     view! {
         <g transform=format!("translate({PLACARD_NOTES_X:.2} {PLACARD_NOTES_Y:.2})") opacity="0.95">
             <text
-                y=-72.0
+                y=-56.0
                 font-family=CHALK_FONT
-                font-size="40"
-                letter-spacing="3.5"
+                font-size="30"
+                letter-spacing="2.5"
                 fill=CHALK_INK
             >
                 "THE PLACARD, PLAINLY"
             </text>
             <line
                 x1="0"
-                y1="-56"
-                x2="470"
-                y2="-56"
+                y1="-44"
+                x2="350"
+                y2="-44"
                 stroke=CHALK_INK
-                stroke-width="2"
-                stroke-dasharray="8 6"
+                stroke-width="1.6"
+                stroke-dasharray="7 5"
                 opacity="0.55"
             ></line>
             {lines
@@ -243,7 +271,7 @@ fn PlacardChalk(lines: [String; 4]) -> impl IntoView {
                         <text
                             y=(i as f64) * PLACARD_NOTES_LEADING
                             font-family=CHALK_FONT
-                            font-size="34"
+                            font-size="25"
                             fill=CHALK_INK
                             opacity="0.9"
                         >
@@ -268,6 +296,7 @@ fn HelpContent(snapshot: RwSignal<Option<Snapshot>>) -> impl IntoView {
             let placard = placard_notes(&snap.rules);
             view! {
                 <ChalkZones place=place />
+                <ChipLegend />
                 {notes
                     .into_iter()
                     .map(|note| view! { <ChalkNote note=note place=place /> })
