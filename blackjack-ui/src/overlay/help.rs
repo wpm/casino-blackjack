@@ -112,13 +112,12 @@ fn ChalkZones(place: SeatPlace) -> impl IntoView {
 
 /// How far lettering may drift from its zone before the leader line
 /// appears to tie the two back together.
-const LEADER_MIN_DISTANCE: f64 = 130.0;
+const LEADER_MIN_DISTANCE: f64 = 220.0;
 
-/// One chalk annotation: headline, dashed underline, one-line detail —
-/// lettered at the note's label point, tied back to its felt zone by a
-/// dashed leader when the two are far apart — tilted by its
-/// deterministic jitter and dimmed when its gesture is meaningless
-/// right now.
+/// One chalk annotation: headline, dashed underline, one or two detail
+/// lines — lettered at the note's label point, tied back to its felt
+/// zone by a dashed leader when the two are far apart — dimmed when
+/// its gesture is meaningless right now.
 #[component]
 fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
     let seat_frame = format!(
@@ -138,12 +137,12 @@ fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
     let distance = dx.hypot(dy);
     let leader = (distance > LEADER_MIN_DISTANCE).then(|| {
         // Start clear of the lettering: step out along the leader's
-        // direction from the underline's midpoint, and stop a chip
-        // short of the zone point so the chalk never touches the felt
-        // marking it names.
+        // direction from the underline's midpoint, and stop short of
+        // the zone point so the chalk never touches the felt marking
+        // it names.
         let (ux, uy) = (dx / distance, dy / distance);
-        let (sx, sy) = (ux * 92.0, 16.0 + uy * 24.0);
-        let (ex, ey) = (dx - ux * 26.0, dy - uy * 26.0);
+        let (sx, sy) = (ux * 250.0, 34.0 + uy * 52.0);
+        let (ex, ey) = (dx - ux * 40.0, dy - uy * 40.0);
         view! {
             <line
                 x1=format!("{sx:.2}")
@@ -151,46 +150,61 @@ fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
                 x2=format!("{ex:.2}")
                 y2=format!("{ey:.2}")
                 stroke=CHALK_INK
-                stroke-width="1.2"
-                stroke-dasharray="2 8"
+                stroke-width="1.6"
+                stroke-dasharray="3 10"
                 stroke-linecap="round"
                 opacity="0.5"
             ></line>
         }
     });
+    let detail2 = note.detail2.map(|line| {
+        view! {
+            <text
+                y="150"
+                text-anchor="middle"
+                font-family=CHALK_FONT
+                font-size="38"
+                fill=CHALK_INK
+                opacity="0.9"
+            >
+                {line}
+            </text>
+        }
+    });
     view! {
         <g transform=frame opacity=if note.dimmed { 0.3 } else { 0.95 }>
-            <g transform=format!("translate({x:.2} {y:.2}) rotate({:.2})", note.tilt)>
+            <g transform=format!("translate({x:.2} {y:.2})")>
                 {leader}
                 <text
                     text-anchor="middle"
                     font-family=CHALK_FONT
-                    font-size="17"
-                    letter-spacing="2.5"
+                    font-size="44"
+                    letter-spacing="4"
                     fill=CHALK_INK
                 >
                     {note.title}
                 </text>
                 <line
-                    x1="-66"
-                    y1="7"
-                    x2="66"
-                    y2="7"
+                    x1="-150"
+                    y1="16"
+                    x2="150"
+                    y2="16"
                     stroke=CHALK_INK
-                    stroke-width="1.3"
-                    stroke-dasharray="6 4"
+                    stroke-width="2"
+                    stroke-dasharray="8 6"
                     opacity="0.55"
                 ></line>
                 <text
-                    y="26"
+                    y="66"
                     text-anchor="middle"
                     font-family=CHALK_FONT
-                    font-size="12.5"
+                    font-size="38"
                     fill=CHALK_INK
                     opacity="0.9"
                 >
                     {note.detail}
                 </text>
+                {detail2}
             </g>
         </g>
     }
@@ -201,29 +215,24 @@ fn ChalkNote(note: HelpNote, place: SeatPlace) -> impl IntoView {
 #[component]
 fn PlacardChalk(lines: [String; 4]) -> impl IntoView {
     view! {
-        <g
-            transform=format!(
-                "translate({PLACARD_NOTES_X:.2} {PLACARD_NOTES_Y:.2}) rotate(-1.2)"
-            )
-            opacity="0.95"
-        >
+        <g transform=format!("translate({PLACARD_NOTES_X:.2} {PLACARD_NOTES_Y:.2})") opacity="0.95">
             <text
-                y=-32.0
+                y=-72.0
                 font-family=CHALK_FONT
-                font-size="15"
-                letter-spacing="2"
+                font-size="40"
+                letter-spacing="3.5"
                 fill=CHALK_INK
             >
                 "THE PLACARD, PLAINLY"
             </text>
             <line
                 x1="0"
-                y1="-24"
-                x2="188"
-                y2="-24"
+                y1="-56"
+                x2="470"
+                y2="-56"
                 stroke=CHALK_INK
-                stroke-width="1.3"
-                stroke-dasharray="6 4"
+                stroke-width="2"
+                stroke-dasharray="8 6"
                 opacity="0.55"
             ></line>
             {lines
@@ -234,7 +243,7 @@ fn PlacardChalk(lines: [String; 4]) -> impl IntoView {
                         <text
                             y=(i as f64) * PLACARD_NOTES_LEADING
                             font-family=CHALK_FONT
-                            font-size="12.5"
+                            font-size="34"
                             fill=CHALK_INK
                             opacity="0.9"
                         >
