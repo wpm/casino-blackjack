@@ -7,10 +7,10 @@
 //! scene components are thin views over [`crate::scene::geometry`].
 //!
 //! Each [`HelpNote`] is anchored inside the felt zone it describes (in
-//! the human's seat frame or in global scene coordinates), carries a
-//! deterministic chalk-lettering tilt, and knows whether it should be
-//! dimmed — an annotation for a gesture that is meaningless right now
-//! dims but never vanishes, so the vocabulary always reads as a whole.
+//! the human's seat frame or in global scene coordinates) and knows
+//! whether it should be dimmed — an annotation for a gesture that is
+//! meaningless right now dims but never vanishes, so the vocabulary
+//! always reads as a whole.
 //!
 //! The lettering itself sits at a separate [`HelpNote::label`] point,
 //! laddered into open felt around the crowded center seat; when a label
@@ -19,7 +19,7 @@
 //! points separate is what lets every zone stay truthfully outlined
 //! while the words spread out far enough to stay legible.
 
-use blackjack_core::{ActionKind, Phase, Rules, Soft17};
+use blackjack_core::{ActionKind, Denomination, Phase, Rules, Soft17};
 
 use crate::input::geometry::{
     BEHIND_ZONE_Y_MAX, BEHIND_ZONE_Y_MIN, DOUBLE_ZONE_X, HAND_ZONE_Y_FAR, HAND_ZONE_Y_NEAR,
@@ -56,8 +56,8 @@ pub struct HelpNote {
     pub id: &'static str,
     /// The short chalk headline.
     pub title: &'static str,
-    /// The one-line explanation under the headline.
-    pub detail: &'static str,
+    /// The explanation under the headline, one entry per chalk line.
+    pub details: &'static [&'static str],
     /// The point inside the felt zone this note describes — the leader
     /// line's target, always within the zone's own bounds.
     pub anchor: HelpAnchor,
@@ -66,29 +66,35 @@ pub struct HelpNote {
     pub label: HelpAnchor,
     /// Whether the described action is meaningless right now.
     pub dimmed: bool,
-    /// Hand-lettering rotation jitter, degrees.
-    pub tilt: f64,
 }
 
-/// The keyboard cheat row, chalked near the rack. Mirrors the key map
-/// documented in [`crate::input::keyboard`].
-pub const KEY_CHEAT_ROW: &str = "H hit \u{b7} S stand \u{b7} D double \u{b7} P split \u{b7} \
-                                 R surrender \u{b7} Y/N insurance \u{b7} Enter post \u{b7} \
-                                 W walk away";
+/// First line of the keyboard cheat rows, chalked along the top rail.
+pub const KEY_ROW_1: &str =
+    "H hit \u{b7} S stand \u{b7} D double \u{b7} P split \u{b7} R surrender";
+/// Second line of the keyboard cheat rows.
+pub const KEY_ROW_2: &str = "Y/N insurance \u{b7} Enter post \u{b7} W walk away";
+
+/// Center of the chip legend, scene x — chalked under the dealer tray,
+/// where the real chips it names are racked.
+pub const CHIP_LEGEND_X: f64 = 1010.0;
+/// Baseline of the legend's chip row, scene y.
+pub const CHIP_LEGEND_Y: f64 = 215.0;
+
+/// The chip legend: every denomination the table uses, smallest first,
+/// with the dollar label chalked under each.
+pub fn chip_legend() -> Vec<(Denomination, String)> {
+    Denomination::ALL
+        .into_iter()
+        .map(|denomination| (denomination, format!("${}", denomination.value())))
+        .collect()
+}
 
 /// Left edge of the placard-explanations block, scene x.
 pub const PLACARD_NOTES_X: f64 = 120.0;
 /// Baseline of the block's first line, scene y.
-pub const PLACARD_NOTES_Y: f64 = 392.0;
+pub const PLACARD_NOTES_Y: f64 = 388.0;
 /// Leading between the block's lines.
-pub const PLACARD_NOTES_LEADING: f64 = 25.0;
-
-/// Deterministic hand-lettering tilt for the note at `index`: small,
-/// alternating, and stable so the chalk never shimmers between renders.
-pub fn label_tilt(index: usize) -> f64 {
-    const TILTS: [f64; 8] = [-1.8, 1.3, -1.0, 1.9, -1.4, 0.8, -2.1, 1.6];
-    TILTS[index % TILTS.len()]
-}
+pub const PLACARD_NOTES_LEADING: f64 = 34.0;
 
 /// Whether a hand-signal annotation (`kind`) is live right now: the
 /// human's turn and the action legal — the same gate the recognizers
@@ -110,133 +116,146 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
         && ctx.human_active
         && ctx.allows(ActionKind::TakeInsurance);
     let between_rounds = matches!(ctx.phase, Phase::Betting | Phase::RoundOver);
-    // (id, title, detail, zone anchor, lettering label, dimmed). Labels
-    // ladder into open felt: hit/double/split up the right side,
-    // stand/surrender/rack-leave up the left, bet and insurance on the
-    // center line above the circle, keys along the bottom rail.
-    let raw: [(&str, &str, &str, HelpAnchor, HelpAnchor, bool); 9] = [
+    // (id, title, detail lines, zone anchor, lettering label, dimmed).
+    // Labels ladder into open felt: hit/insurance/double/split up the
+    // right side, stand/surrender/rack up the left, the bet note on the
+    // center line, and the two summary blocks — mouse gestures and
+    // keyboard keys — along the top rail.
+    type Row = (
+        &'static str,
+        &'static str,
+        &'static [&'static str],
+        HelpAnchor,
+        HelpAnchor,
+        bool,
+    );
+    let raw: [Row; 10] = [
         (
             "bet-circle",
             "BETTING CIRCLE",
-            "Drag chips from your rack into the circle; let them rest and the deal begins.",
+            &["Drag chips in; resting chips deal."],
             HelpAnchor::Seat { x: 0.0, y: 0.0 },
-            HelpAnchor::Seat { x: 0.0, y: -115.0 },
+            HelpAnchor::Seat {
+                x: -60.0,
+                y: -115.0,
+            },
             !betting_open,
         ),
         (
             "hit",
             "TAP FOR A CARD",
-            "Tap the felt behind your cards to hit \u{2014} one more card.",
+            &["Tap the felt for one more card."],
             HelpAnchor::Seat {
                 x: 0.0,
                 y: HAND_ZONE_Y_FAR + 60.0,
             },
             HelpAnchor::Seat {
-                x: 330.0,
-                y: -335.0,
+                x: 365.0,
+                y: -385.0,
             },
             !hand_live(ctx, ActionKind::Hit),
         ),
         (
             "stand",
             "WAVE IT OFF",
-            "Sweep sideways across your cards to stand \u{2014} no more cards.",
+            &["Sweep across the felt to stand."],
             HelpAnchor::Seat {
                 x: 0.0,
                 y: HAND_ZONE_Y_NEAR - 60.0,
             },
             HelpAnchor::Seat {
-                x: -350.0,
-                y: -180.0,
+                x: -520.0,
+                y: -205.0,
             },
             !hand_live(ctx, ActionKind::Stand),
         ),
         (
             "double",
             "CHIPS BESIDE",
-            "Drop a chip beside your bet to double down: bet doubled, exactly one more card.",
+            &["Drop a chip beside your bet."],
             HelpAnchor::Seat {
                 x: DOUBLE_ZONE_X,
                 y: 0.0,
             },
-            HelpAnchor::Seat { x: 345.0, y: -30.0 },
+            HelpAnchor::Seat { x: 430.0, y: -10.0 },
             !hand_live(ctx, ActionKind::Double),
         ),
         (
             "split",
             "CHIPS BEHIND",
-            "Drop a chip directly behind your bet to split a pair into two hands.",
+            &["Drop a chip behind the pair."],
             HelpAnchor::Seat {
                 x: 0.0,
                 y: SPLIT_ZONE_Y,
             },
-            HelpAnchor::Seat { x: 345.0, y: 95.0 },
+            HelpAnchor::Seat { x: 430.0, y: 115.0 },
             !hand_live(ctx, ActionKind::Split),
         ),
         (
             "surrender",
             "DRAW THE LINE",
-            "Drag a chip-free line behind your bet to surrender: half the bet back.",
+            &["Draw a bare line to give up half."],
             HelpAnchor::Seat {
                 x: -96.0,
                 y: (BEHIND_ZONE_Y_MIN + BEHIND_ZONE_Y_MAX) / 2.0,
             },
-            HelpAnchor::Seat {
-                x: -345.0,
-                y: -30.0,
-            },
+            HelpAnchor::Seat { x: -440.0, y: 5.0 },
             !hand_live(ctx, ActionKind::Surrender),
         ),
         (
             "insurance",
-            "THE INSURANCE LINE",
-            "A side bet that the dealer has blackjack \u{2014} drop chips on the line to take it.",
+            "INSURANCE",
+            &["Drop chips on the line, 2 to 1."],
             HelpAnchor::Global {
                 x: ARC_CX,
                 y: ARC_CY + INSURANCE_R_OUTER,
             },
             HelpAnchor::Global {
-                x: ARC_CX,
-                y: ARC_CY + INSURANCE_R_OUTER,
+                x: 1165.0,
+                y: 545.0,
             },
             !insurance_open,
         ),
         (
             "rack-leave",
             "YOUR RACK",
-            "Drag the rack down off the felt to rack up and walk away.",
+            &["Drag your rack off the felt to leave."],
             HelpAnchor::Global {
                 x: RACK_X,
                 y: RACK_REGION_TOP + 22.0,
             },
-            HelpAnchor::Global { x: 455.0, y: 885.0 },
+            HelpAnchor::Global { x: 390.0, y: 915.0 },
             !between_rounds,
+        ),
+        (
+            "gestures",
+            "GESTURES",
+            &[
+                "Bet: drag chips to your circle.",
+                "Hit: tap \u{b7} Stand: sweep \u{b7} Surrender: line.",
+                "Double: chip beside \u{b7} Split: chip behind.",
+            ],
+            HelpAnchor::Global { x: 365.0, y: 58.0 },
+            HelpAnchor::Global { x: 365.0, y: 58.0 },
+            false,
         ),
         (
             "keys",
             "KEYS",
-            KEY_CHEAT_ROW,
-            HelpAnchor::Global {
-                x: RACK_X,
-                y: RACK_REGION_TOP - 46.0,
-            },
-            HelpAnchor::Global {
-                x: RACK_X,
-                y: 950.0,
-            },
+            &[KEY_ROW_1, KEY_ROW_2],
+            HelpAnchor::Global { x: 1235.0, y: 58.0 },
+            HelpAnchor::Global { x: 1235.0, y: 58.0 },
             false,
         ),
     ];
     raw.into_iter()
-        .enumerate()
-        .map(|(i, (id, title, detail, anchor, label, dimmed))| HelpNote {
+        .map(|(id, title, details, anchor, label, dimmed)| HelpNote {
             id,
             title,
-            detail,
+            details,
             anchor,
             label,
             dimmed,
-            tilt: label_tilt(i),
         })
         .collect()
 }
@@ -247,35 +266,26 @@ pub fn help_notes(ctx: &GestureCtx) -> Vec<HelpNote> {
 pub fn placard_notes(rules: &Rules) -> [String; 4] {
     [
         match rules.soft_17 {
-            Soft17::Stand => {
-                "\u{201c}Stands on soft 17\u{201d}: on ace-6 the dealer must stop \u{2014} \
-                 a touch better for you."
-            }
-            Soft17::Hit => {
-                "\u{201c}Hits soft 17\u{201d}: on ace-6 the dealer draws again \u{2014} \
-                 a touch worse for you."
-            }
+            Soft17::Stand => "Soft 17: the dealer stands on ace-6.",
+            Soft17::Hit => "Soft 17: the dealer hits ace-6.",
         }
         .to_string(),
         if rules.double_after_split {
-            "\u{201c}Double after split\u{201d}: you may double down on hands made by \
-             splitting a pair."
+            "You may double after splitting."
         } else {
-            "No doubling down on hands made by splitting a pair."
+            "No doubling after a split."
         }
         .to_string(),
         if rules.late_surrender {
-            "\u{201c}Late surrender\u{201d}: once the dealer checks for blackjack, you may \
-             give up your hand for half the bet back."
+            "Surrender after the peek: keep half."
         } else {
-            "No surrender here: every hand plays to the end."
+            "No surrender at this table."
         }
         .to_string(),
         if rules.insurance_offered {
-            "Insurance is offered when the dealer shows an ace: a side bet, paying 2 to 1, \
-             that the dealer has blackjack."
+            "Insurance: 2 to 1 the dealer has it."
         } else {
-            "This table offers no insurance bet."
+            "No insurance at this table."
         }
         .to_string(),
     ]
@@ -285,7 +295,7 @@ pub fn placard_notes(rules: &Rules) -> [String; 4] {
 mod tests {
     use super::*;
     use crate::input::geometry::{
-        BAND_HALF_W, BET_ZONE_R, Point, RACK_HALF_W, SIDE_ZONE_R, in_behind_band, in_hand_zone,
+        BAND_HALF_W, BET_ZONE_R, Point, SIDE_ZONE_R, in_behind_band, in_hand_zone,
         in_insurance_band, in_rack_region,
     };
     use crate::input::gesture::test_ctx;
@@ -306,11 +316,22 @@ mod tests {
     }
 
     /// Conservative bounding box for a note's chalk lettering: centered
-    /// title (17px, wide letter-spacing) over centered detail (12.5px).
+    /// title (34px, wide letter-spacing) over centered detail lines
+    /// (25px each).
     fn label_box(note: &HelpNote, place: SeatPlace) -> LabelBox {
         let p = label_point(note, place);
-        let width = (note.title.len() as f64 * 13.2).max(note.detail.len() as f64 * 6.6);
-        (p.x - width / 2.0, p.y - 16.0, p.x + width / 2.0, p.y + 32.0)
+        let width = note
+            .details
+            .iter()
+            .map(|line| line.len() as f64 * 13.2)
+            .fold(note.title.len() as f64 * 26.0, f64::max);
+        let bottom = 60.0 + (note.details.len().saturating_sub(1)) as f64 * 40.0;
+        (
+            p.x - width / 2.0,
+            p.y - 27.0,
+            p.x + width / 2.0,
+            p.y + bottom,
+        )
     }
 
     /// A lettering bounding box: (left, top, right, bottom).
@@ -356,11 +377,17 @@ mod tests {
                 "surrender",
                 "insurance",
                 "rack-leave",
+                "gestures",
                 "keys",
             ]
         );
         for n in &notes {
-            assert!(!n.title.is_empty() && !n.detail.is_empty(), "{}", n.id);
+            assert!(!n.title.is_empty(), "{}", n.id);
+            assert!(
+                !n.details.is_empty() && n.details.iter().all(|line| !line.is_empty()),
+                "{}",
+                n.id
+            );
         }
     }
 
@@ -387,12 +414,14 @@ mod tests {
         assert!(surrender.distance(Point::new(0.0, SPLIT_ZONE_Y)) > SIDE_ZONE_R);
         // Insurance letters on the printed band.
         assert!(in_insurance_band(global_anchor(note(&notes, "insurance"))));
-        // The rack note letters inside the rack's pointer region; the
-        // key cheat row chalks just above it on the rail.
+        // The rack note letters inside the rack's pointer region.
         assert!(in_rack_region(global_anchor(note(&notes, "rack-leave"))));
-        let keys = global_anchor(note(&notes, "keys"));
-        assert!((keys.x - RACK_X).abs() <= RACK_HALF_W);
-        assert!((RACK_REGION_TOP - 80.0..RACK_REGION_TOP).contains(&keys.y));
+        // The summary blocks describe no single felt zone: their anchor
+        // and label coincide, so no leader is ever drawn.
+        for id in ["gestures", "keys"] {
+            let summary = note(&notes, id);
+            assert_eq!(summary.anchor, summary.label, "{id}");
+        }
     }
 
     #[test]
@@ -410,9 +439,15 @@ mod tests {
         // lines up to ~110 chars at 12.5px, plus its headline above).
         let placard = (
             PLACARD_NOTES_X - 10.0,
-            PLACARD_NOTES_Y - 45.0,
-            PLACARD_NOTES_X + 730.0,
+            PLACARD_NOTES_Y - 84.0,
+            PLACARD_NOTES_X + 510.0,
             PLACARD_NOTES_Y + 3.0 * PLACARD_NOTES_LEADING + 10.0,
+        );
+        let legend = (
+            CHIP_LEGEND_X - 210.0,
+            CHIP_LEGEND_Y - 45.0,
+            CHIP_LEGEND_X + 210.0,
+            CHIP_LEGEND_Y + 70.0,
         );
         for (i, (id_a, a)) in boxes.iter().enumerate() {
             assert!(
@@ -422,6 +457,10 @@ mod tests {
             assert!(
                 !boxes_overlap(*a, placard),
                 "{id_a} collides with the placard explainer: {a:?}"
+            );
+            assert!(
+                !boxes_overlap(*a, legend),
+                "{id_a} collides with the chip legend: {a:?}"
             );
             for (id_b, b) in boxes.iter().skip(i + 1) {
                 assert!(
@@ -480,11 +519,10 @@ mod tests {
     #[test]
     fn placard_notes_read_the_posted_rules() {
         let generous = placard_notes(&Rules::canonical());
-        assert!(generous[0].contains("Stands on soft 17"));
-        assert!(generous[0].contains("ace-6"));
-        assert!(generous[1].contains("Double after split"));
-        assert!(generous[2].contains("Late surrender"));
-        assert!(generous[3].contains("ace") && generous[3].contains("2 to 1"));
+        assert!(generous[0].contains("stands on ace-6"));
+        assert!(generous[1].contains("double after splitting"));
+        assert!(generous[2].contains("Surrender after the peek"));
+        assert!(generous[3].contains("2 to 1"));
 
         let stingy = placard_notes(&Rules {
             soft_17: Soft17::Hit,
@@ -493,17 +531,18 @@ mod tests {
             insurance_offered: false,
             ..Rules::canonical()
         });
-        assert!(stingy[0].contains("Hits soft 17"));
+        assert!(stingy[0].contains("hits ace-6"));
         assert_ne!(generous[0], stingy[0]);
         assert!(stingy[1].contains("No doubling"));
         assert!(stingy[2].contains("No surrender"));
-        assert!(stingy[3].contains("no insurance"));
+        assert!(stingy[3].contains("No insurance"));
     }
 
     #[test]
-    fn the_cheat_row_covers_the_documented_key_map() {
+    fn the_cheat_rows_cover_the_documented_key_map() {
+        let rows = format!("{KEY_ROW_1} {KEY_ROW_2}");
         for key in ["H ", "S ", "D ", "P ", "R ", "Y/N", "Enter", "W "] {
-            assert!(KEY_CHEAT_ROW.contains(key), "{key}");
+            assert!(rows.contains(key), "{key}");
         }
         for word in [
             "hit",
@@ -515,21 +554,7 @@ mod tests {
             "post",
             "walk away",
         ] {
-            assert!(KEY_CHEAT_ROW.contains(word), "{word}");
-        }
-    }
-
-    #[test]
-    fn lettering_tilt_is_deterministic_and_subtle() {
-        for i in 0..20 {
-            assert_eq!(label_tilt(i), label_tilt(i + 8));
-            assert!(label_tilt(i).abs() <= 3.0);
-            // Neighboring labels lean opposite ways.
-            assert!(label_tilt(i) * label_tilt(i + 1) < 0.0);
-        }
-        let notes = help_notes(&test_ctx(Phase::Betting, &[ActionKind::PlaceBet], false));
-        for (i, n) in notes.iter().enumerate() {
-            assert_eq!(n.tilt, label_tilt(i), "{}", n.id);
+            assert!(rows.contains(word), "{word}");
         }
     }
 }
