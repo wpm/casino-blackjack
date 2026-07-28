@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Casino Blackjack",
+  "version": "0.1.0",
+  "identifier": "com.wpm.casinoblackjack",
+  "build": {
+    "beforeDevCommand": "cd blackjack-ui && trunk serve",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "cd blackjack-ui && trunk build --release",
+    "frontendDist": "../blackjack-ui/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Casino Blackjack",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws: http://127.0.0.1:1420"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "msi", "appimage", "deb"],
+    "category": "CardGame",
+    "copyright": "Copyright © 2026 W.P. McNeill",
+    "shortDescription": "Casino blackjack against a living table of AI strangers.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

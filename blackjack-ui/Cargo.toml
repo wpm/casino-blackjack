@@ -1,0 +1,55 @@
+[package]
+name = "blackjack-ui"
+description = "Leptos frontend for Casino Blackjack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# Make the in-process engine THE backend — no Tauri probing, no Tauri
+# glue compiled in. This is the web build (GitHub Pages):
+#   trunk build --release --features in-process
+# Without it, the app probes for the Tauri IPC global at runtime and
+# falls back to the same in-process engine (the `trunk serve` dev loop).
+in-process = []
+
+[dependencies]
+blackjack-core = { path = "../blackjack-core" }
+blackjack-protocol = { path = "../blackjack-protocol" }
+leptos = { version = "0.8", features = ["csr"] }
+console_error_panic_hook = "0.1"
+serde = { workspace = true }
+# The in-process backend seeds its session from OS randomness
+# (getrandom's wasm_js backend on wasm; see .cargo/config.toml).
+rand = { workspace = true }
+# DOM types the input overlay reads beyond what leptos itself enables.
+web-sys = { version = "0.3", features = ["DomRect", "Element", "EventTarget", "PointerEvent"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Backend selection for the getrandom in blackjack-core's rand dependency;
+# see .cargo/config.toml at the workspace root.
+getrandom = { version = "0.3", features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+# Motion (#10): requestAnimationFrame and the WebAudio synth.
+web-sys = { version = "0.3", features = [
+    "Window",
+    "EventTarget",
+    "AudioContext",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "BiquadFilterNode",
+    "BiquadFilterType",
+    "GainNode",
+] }
+
+[dev-dependencies]
+# Seeded engine rounds for the motion property tests.
+rand_chacha = { workspace = true }

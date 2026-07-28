@@ -1,0 +1,64 @@
+name: Pages
+
+# Deploys the browser build to GitHub Pages: the wasm app with the
+# engine compiled in-process (the `in-process` cargo feature), so the
+# complete game runs in a plain browser with no shell at all.
+#
+# Requires repo Settings → Pages → Source = "GitHub Actions" (a one-time
+# setting) for the deploy step to publish.
+
+on:
+  push:
+    branches: [main, feature/casino-blackjack-v1]
+
+env:
+  CARGO_TERM_COLOR: always
+  TRUNK_VERSION: v0.21.14
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install trunk
+        run: |
+          curl -sSfL \
+            "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xzf - -C "$HOME/.cargo/bin" trunk
+
+      # Project Pages are served under the repo name, hence the
+      # --public-url.
+      - name: Build web app
+        working-directory: blackjack-ui
+        run: trunk build --release --features in-process --public-url /casino-blackjack/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: blackjack-ui/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
